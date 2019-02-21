@@ -10,22 +10,17 @@ class HttpServer:
   def __init__(self, ip_addr='', port=0):
     self.ip = ip_addr
     self.port = port
-    self.www_dir = 'www/'
-    self.upload_dir = 'upload/'
+    self.www_dir = 'www'
+    self.upload_dir = 'upload'
 
 
   def start_server(self):
     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-      #print('Starting HTTP server at {} on port {}'.format(self.ip, self.port))
       self.sock.bind((self.ip, self.port))
       if self.port == 0:
         self.port = self.sock.getsockname()[1]
       print('Starting HTTP server at {} on port {}'.format(self.ip, self.port))
-#    except PermissionError as e:
-#      print('Failed to start HTTP server.')
-#      print(e)
-      #TODO: Attempt to connect to unpriveleged port
     except Exception as e:
       print('Failed to start HTTP server.')
       print(e)
@@ -45,10 +40,11 @@ class HttpServer:
     elif status_code == const.HTTP_STATUS_FILE_NOT_FOUND:
       header = 'HTTP/1.1 {} OK\n'.format(const.HTTP_STATUS_FILE_NOT_FOUND)
     elif status_code == const.HTTP_STATUS_FORBIDDEN:
-      pass
-    #elif status_code == const.HTTP_STATUS
+      header = 'HTTP/1.1 {} Forbidden\n'.format(const.HTTP_STATUS_FORBIDDEN)
+    elif status_code == const.HTTP_STATUS_INTERNAL_ERROR:
+      header = 'HTTP/1.1 {} Internal Error'.format(const.HTTP_STATUS_INTERNAL_ERROR)
     else: #unrecognized status
-      pass
+      header = 'HTTP/1.1 {} Bad Request\n'.format(const.HTTP_STATUS_BAD_REQ)
 
     # add more fields to the header, regardless of status code
     cur_date = time.strftime('%a %d %b %Y %H %M %S', time.localtime())
@@ -59,19 +55,31 @@ class HttpServer:
     return header
 
 
-  def _serve_content(self, req_file, req_method, conn):
-    if req_method != 'GET':
-      pass # Error check that the request method was a GET
-      # headers = self._generate_headers(const.HTTP_STATUS_BAD_REQ)
-    try: 
-      with open(req_file, 'rb') as fp:
-        content = fp.read()
+  def _get_content(self, filename):
+    with open(filename, 'rb') as fp:
+      content = fp.read()
+    return content
 
-      headers = self._generate_headers(const.HTTP_STATUS_OK)
 
-    except Exception as e:
-      print('FUCK MY SHIT UP')
-      print(e)
+  def _serve_content(self, req_file, req_method, conn, status=const.HTTP_STATUS_OK):
+    if status == const.HTTP_STATUS_BAD_REQ:
+      headers = self._generate_headers(const.HTTP_STATUS_BAD_REQ)
+      content = self._get_content(self.www_dir + '/' + 'error_400.html')
+    elif status == const.HTTP_STATUS_FORBIDDEN:
+      headers = self._generate_headers(status)
+      content = self._get_content(self.www_dir + '/' + 'error_403.html')
+    else:
+      try: 
+        content = self._get_content(req_file)
+        headers = self._generate_headers(status)
+      except FileNotFoundError as e:
+        headers = self._generate_headers(const.HTTP_STATUS_FILE_NOT_FOUND)
+        content = self._get_content(self.www_dir + '/' + 'error_404.html')
+        print(e)
+      except Exception as e:
+        headers = self._generate_headers(const.HTTP_STATUS_INTERNAL_ERROR)
+        content = self._get_content(self.www_dir + '/' + 'error_500.html')
+        print(e)
 
     response = headers.encode() + content
     conn.send(response)
@@ -80,6 +88,7 @@ class HttpServer:
 
 
   def __is_safe_path(self, path):
+    """ Check for attempt at path traversal! """
     basedir = os.getcwd() + '/' + self.www_dir
     follow_symlinks = False
     if follow_symlinks:
@@ -88,23 +97,23 @@ class HttpServer:
 
 
   def _handle_request(self, data, conn):
-    status = const.HTTP_STATUS_OK
     fields = data.split(' ')
     request_method = fields[0]
     if request_method == 'GET' or request_method == 'HEAD':
       req_file = fields[1]
-      if req_file == '/': req_file = 'index.html'
+      if req_file == '/': req_file += 'index.html'
       req_file = self.www_dir + req_file
       print('Request for file: ', req_file)
-      if self.__is_safe_path(req_file):
+      if self.__is_safe_path(req_file): # Safe to try to open file
         print('This is a safe file!')
-        self._serve_content(req_file, request_method, conn)
-      else:
-        # return 403 Forbidden error
-        pass
+        status = const.HTTP_STATUS_OK
+      else: # return 403 Forbidden error
+        status = const.HTTP_STATUS_FORBIDDEN
     else:
       print('Unknown HTTP request method: ', request_method)
+      status = const.HTTP_STATUS_BAD_REQ
     
+    self._serve_content(req_file, request_method, conn, status)
 
 
   def _wait_for_connections(self):
@@ -118,6 +127,7 @@ class HttpServer:
       data = conn.recv(1024)
       data_str = bytes.decode(data)
 
+      #TODO: try-catch here w/ 500 internal error if exception
       self._handle_request(data_str, conn)
 
 
@@ -143,5 +153,3 @@ signal.signal(signal.SIGINT, stop_server)
 
 s = HttpServer('', 8000)
 s.start_server()
-time.sleep(1)
-s.shutdown()
