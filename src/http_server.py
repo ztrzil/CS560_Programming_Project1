@@ -56,6 +56,8 @@ class HttpServer:
 
 
   def _get_content(self, filename):
+    """ Open up the webpage and return it. Note: opening file in binary mode,
+    so the content does not need to be encoded like the header """
     with open(filename, 'rb') as fp:
       content = fp.read()
     return content
@@ -117,6 +119,8 @@ class HttpServer:
 
 
   def _wait_for_connections(self):
+    """ Sit in loop and wait for connections. Handle the request once
+    a connection is received. """
     while True:
       print('Listening for new connection')
       self.sock.listen(const.MAX_CONNECTIONS)
@@ -133,16 +137,23 @@ class HttpServer:
 
 
   def shutdown(self):
+    """ Shutdown any active connections and close the socket """
     try: 
-      print('Shutting down HTTP Server')
-      self.sock.shutdown(socket.SHUT_RDWR) # shut down both halves of the connection
+      print('\nShutting down HTTP Server. . .')
+      self.sock.shutdown(socket.SHUT_RDWR) # shut down both halves of active connection
     except Exception as e:
-      print('Failed to shutdown HTTP Server:')
-      print(e)
+      # Errno 57 Socket Not Connected means there were no active connections at
+      # the time of shutting down. Ignore that error silently and close the conn.
+      if not 'Errno 57' in str(e): 
+        print('Error while shutting down HTTP Server:')
+        print(e)
+    finally:
+      self.sock.close()
 
 
 
 def stop_server(sig, frame):
+  """ If ctrl-c is caught, shut down the server gracefully and exit."""
   s.shutdown()
   sys.exit(0)
 
