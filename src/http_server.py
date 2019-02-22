@@ -109,6 +109,7 @@ class HttpServer:
     fields = bytes.decode(parts[0]).split('\n')
     fields = [field.split(' ') for field in fields] 
     sz = int(fields[3][1])
+    #TODO: grab actual file name and sanitize it. Add random string if name collision
     filename = uuid.uuid4().hex
     content = parts[2]
     print(sz)
