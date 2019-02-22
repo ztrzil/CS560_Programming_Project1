@@ -4,6 +4,7 @@ import socket
 import signal
 import time
 import const
+import uuid # create random file name
 # sanitize upload file names
 from werkzeug.utils import secure_filename
 
@@ -91,12 +92,52 @@ class HttpServer:
     conn.close()
 
 
-  def _upload_file(self, data, conn):
-    print('uploading this shit!')
-    data = conn.recv(1024)
-    while data:
-      print(data)
-      data = conn.recv(1024)
+  def _upload_file(self, fields, data, conn):
+    #TODO: size isn't working (size of headers and other info is included. 
+    # Splitting on '\r\n\r\n' should work, but also isn't...
+    parts = data.split('\r\n\r\n'.encode())
+    while len(parts) < 3:
+      new_d = conn.recv(1024)
+      if not new_d: break
+      data += new_d
+      parts = data.split('\r\n\r\n'.encode())
+
+    if len(parts) < 3:
+      # malformed request. Raise error
+      pass
+#    print(bytes.decode(parts[1]))
+    fields = bytes.decode(parts[0]).split('\n')
+    fields = [field.split(' ') for field in fields] 
+    sz = int(fields[3][1])
+    filename = uuid.uuid4().hex
+    content = parts[2]
+    print(sz)
+    print('uploading file!')
+    with open(self.upload_dir + '/' + filename, 'wb') as fp:
+      if len(content) < sz:
+        fp.write(content)
+        sz -= len(content)
+      else:
+        fp.write(content[0:sz])
+        return
+      print(content)
+      while content:
+        print('SIZE: ', sz)
+        content = conn.recv(1024)
+        check = content.split('\r\n\r\n'.encode()) 
+        if len(check) > 1:
+          print('FOUND IT!')
+          fp.write(check[0])
+          print(check[0])
+          break
+        if len(content) < sz:
+          print(content)
+          fp.write(content)
+          sz -= len(content)
+        else:
+          print(content[0:sz])
+          fp.write(content[0:sz])
+          break
     sys.exit(0)
 
 
@@ -111,8 +152,8 @@ class HttpServer:
 
 
   def _handle_request(self, data, conn):
-#    fields = data.split(' ')
-    fields = data.split('\n')
+    data_str = bytes.decode(data)
+    fields = data_str.split('\n')
     fields = [field.split(' ') for field in fields] 
     request_method = fields[0][0]
     print(request_method)
@@ -129,8 +170,7 @@ class HttpServer:
         status = const.HTTP_STATUS_FORBIDDEN
       self._serve_content(req_file, request_method, conn, status)
     elif request_method == 'POST':
-      print(data)
-      self._upload_file(data, conn)
+      self._upload_file(fields, data, conn)
     else:
       print('Unknown HTTP request method: ', request_method)
       status = const.HTTP_STATUS_BAD_REQ
@@ -149,10 +189,11 @@ class HttpServer:
       print('New connection from ', addr)
 
       data = conn.recv(1024)
-      data_str = bytes.decode(data)
+#      data_str = bytes.decode(data)
 
       #TODO: try-catch here w/ 500 internal error if exception
-      self._handle_request(data_str, conn)
+      #self._handle_request(data_str, conn)
+      self._handle_request(data, conn)
 
 
 
