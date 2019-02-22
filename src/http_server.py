@@ -4,7 +4,8 @@ import socket
 import signal
 import time
 import const
-
+# sanitize upload file names
+from werkzeug.utils import secure_filename
 
 class HttpServer:
   def __init__(self, ip_addr='', port=0):
@@ -34,23 +35,24 @@ class HttpServer:
 
   def _generate_headers(self, status_code):
     if status_code == const.HTTP_STATUS_OK:
-      header = 'HTTP/1.1 {} OK\n'.format(const.HTTP_STATUS_OK)
+      header = 'HTTP/1.1 {} OK\r\n'.format(const.HTTP_STATUS_OK)
     elif status_code == const.HTTP_STATUS_BAD_REQ:
       pass
     elif status_code == const.HTTP_STATUS_FILE_NOT_FOUND:
-      header = 'HTTP/1.1 {} OK\n'.format(const.HTTP_STATUS_FILE_NOT_FOUND)
+      header = 'HTTP/1.1 {} OK\r\n'.format(const.HTTP_STATUS_FILE_NOT_FOUND)
     elif status_code == const.HTTP_STATUS_FORBIDDEN:
-      header = 'HTTP/1.1 {} Forbidden\n'.format(const.HTTP_STATUS_FORBIDDEN)
+      header = 'HTTP/1.1 {} Forbidden\r\n'.format(const.HTTP_STATUS_FORBIDDEN)
     elif status_code == const.HTTP_STATUS_INTERNAL_ERROR:
-      header = 'HTTP/1.1 {} Internal Error'.format(const.HTTP_STATUS_INTERNAL_ERROR)
+      header = 'HTTP/1.1 {} Internal Error\r\n'.format(const.HTTP_STATUS_INTERNAL_ERROR)
     else: #unrecognized status
-      header = 'HTTP/1.1 {} Bad Request\n'.format(const.HTTP_STATUS_BAD_REQ)
+      header = 'HTTP/1.1 {} Bad Request\r\n'.format(const.HTTP_STATUS_BAD_REQ)
 
     # add more fields to the header, regardless of status code
     cur_date = time.strftime('%a %d %b %Y %H %M %S', time.localtime())
-    header += 'Date: ' + cur_date + '\n'
-    header += 'Server: ' + const.SERVER_SIGNATURE + '\n'
-    header += 'Connection: close\n\n'
+    header += 'Date: ' + cur_date + '\r\n'
+    header += 'Server: ' + const.SERVER_SIGNATURE + '\r\n'
+    header += 'Connection: close\r\n'
+    header += 'Content-Type: text/html\r\n\r\n'
 
     return header
 
@@ -89,6 +91,16 @@ class HttpServer:
     conn.close()
 
 
+  def _upload_file(self, data, conn):
+    print('uploading this shit!')
+    data = conn.recv(1024)
+    while data:
+      print(data)
+      data = conn.recv(1024)
+    sys.exit(0)
+
+
+
   def __is_safe_path(self, path):
     """ Check for attempt at path traversal! """
     basedir = os.getcwd() + '/' + self.www_dir
@@ -99,10 +111,14 @@ class HttpServer:
 
 
   def _handle_request(self, data, conn):
-    fields = data.split(' ')
-    request_method = fields[0]
+#    fields = data.split(' ')
+    fields = data.split('\n')
+    fields = [field.split(' ') for field in fields] 
+    request_method = fields[0][0]
+    print(request_method)
+    print(fields)
     if request_method == 'GET' or request_method == 'HEAD':
-      req_file = fields[1]
+      req_file = fields[0][1]
       if req_file == '/': req_file += 'index.html'
       req_file = self.www_dir + req_file
       print('Request for file: ', req_file)
@@ -111,11 +127,15 @@ class HttpServer:
         status = const.HTTP_STATUS_OK
       else: # return 403 Forbidden error
         status = const.HTTP_STATUS_FORBIDDEN
+      self._serve_content(req_file, request_method, conn, status)
+    elif request_method == 'POST':
+      print(data)
+      self._upload_file(data, conn)
     else:
       print('Unknown HTTP request method: ', request_method)
       status = const.HTTP_STATUS_BAD_REQ
     
-    self._serve_content(req_file, request_method, conn, status)
+#    self._serve_content(req_file, request_method, conn, status)
 
 
   def _wait_for_connections(self):
