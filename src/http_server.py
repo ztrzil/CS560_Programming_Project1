@@ -35,6 +35,8 @@ class HttpServer:
 
 
   def _generate_headers(self, status_code):
+    """Generate appropriate header based on status code. Return the header
+    encoded as a bytes object so that it can be sent to the browser. """
     if status_code == const.HTTP_STATUS_OK:
       header = 'HTTP/1.1 {} OK\r\n'.format(const.HTTP_STATUS_OK)
     elif status_code == const.HTTP_STATUS_BAD_REQ:
@@ -45,6 +47,8 @@ class HttpServer:
       header = 'HTTP/1.1 {} Forbidden\r\n'.format(const.HTTP_STATUS_FORBIDDEN)
     elif status_code == const.HTTP_STATUS_INTERNAL_ERROR:
       header = 'HTTP/1.1 {} Internal Error\r\n'.format(const.HTTP_STATUS_INTERNAL_ERROR)
+    elif status_code == const.HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE:
+      header = 'HTTP/1.1 {} Unsupported Media Type\r\n'.format(const.HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE)
     else: #unrecognized status
       header = 'HTTP/1.1 {} Bad Request\r\n'.format(const.HTTP_STATUS_BAD_REQ)
 
@@ -55,7 +59,7 @@ class HttpServer:
     header += 'Connection: close\r\n'
     header += 'Content-Type: text/html\r\n\r\n'
 
-    return header
+    return header.encode()
 
 
   def _get_content(self, filename):
@@ -73,6 +77,9 @@ class HttpServer:
     elif status == const.HTTP_STATUS_FORBIDDEN:
       headers = self._generate_headers(status)
       content = self._get_content(self.www_dir + '/' + 'error_403.html')
+    elif status == const.HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE:
+      headers = self._generate_headers(status)
+      content = self._get_content(self.www_dir + '/' + 'error_415.html')
     else:
       try: 
         content = self._get_content(req_file)
@@ -86,61 +93,57 @@ class HttpServer:
         content = self._get_content(self.www_dir + '/' + 'error_500.html')
         print(e)
 
-    response = headers.encode() + content
+    response = headers + content
     conn.send(response)
     print('Terminating connection with client')
     conn.close()
 
 
   def _upload_file(self, fields, data, conn):
-    #TODO: size isn't working (size of headers and other info is included. 
-    # Splitting on '\r\n\r\n' should work, but also isn't...
     parts = data.split('\r\n\r\n'.encode())
     while len(parts) < 3:
-      new_d = conn.recv(1024)
-      if not new_d: break
-      data += new_d
+      chunk = conn.recv(const.CHUNK_SIZE)
+      if not chunk: break
+      data += chunk
       parts = data.split('\r\n\r\n'.encode())
 
-    if len(parts) < 3:
-      # malformed request. Raise error
-      pass
-#    print(bytes.decode(parts[1]))
-    fields = bytes.decode(parts[0]).split('\n')
-    fields = [field.split(' ') for field in fields] 
-    sz = int(fields[3][1])
-    #TODO: grab actual file name and sanitize it. Add random string if name collision
-    filename = uuid.uuid4().hex
-    content = parts[2]
-    print(sz)
-    print('uploading file!')
-    with open(self.upload_dir + '/' + filename, 'wb') as fp:
-      if len(content) < sz:
-        fp.write(content)
-        sz -= len(content)
-      else:
-        fp.write(content[0:sz])
-        return
-      print(content)
-      while content:
-        print('SIZE: ', sz)
-        content = conn.recv(1024)
-        check = content.split('\r\n\r\n'.encode()) 
-        if len(check) > 1:
-          print('FOUND IT!')
-          fp.write(check[0])
-          print(check[0])
-          break
-        if len(content) < sz:
-          print(content)
-          fp.write(content)
-          sz -= len(content)
-        else:
-          print(content[0:sz])
-          fp.write(content[0:sz])
-          break
-    sys.exit(0)
+    if len(parts) < 3: # error
+      self._serve_content('', '', conn, const.HTTP_STATUS_INTERNAL_ERROR)
+      return
 
+    file_name = bytes.decode(parts[1]).split('filename=\"')[1].split('"')[0]
+    file_name = secure_filename(file_name) # sanitize filename
+    if file_name == '': # handle if sanitize returns empty filename or file exists
+      file_name = uuid.uuid4().hex + '.txt'
+    if not file_name.endswith('.txt'):
+      print('Unsupported Media Type')
+      self._serve_content('', '', conn, const.HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE)
+      return
+    exists = os.path.isfile(self.upload_dir + '/' + file_name)
+    if exists:
+      name, ext = file_name.split('.')
+      file_name = name + '_' + uuid.uuid4().hex + '.' + ext
+
+    print('File to upload: ', file_name)
+    content = b'' 
+    for part in parts[2:]:
+      content += part
+    conn.settimeout(2.0)
+    while chunk:
+      try:
+        chunk = conn.recv(const.CHUNK_SIZE)
+      except socket.timeout:
+        break
+      print(chunk)
+      if not chunk: break
+      content += chunk
+
+    file_data = content.decode().split('\r\n------')[0]
+    #print(file_data)
+    with open(self.upload_dir + '/' + file_name, 'wb') as fp:
+      fp.write(file_data.encode())
+
+    self._serve_content(self.www_dir + '/upload_success.html', 'GET', conn)
 
 
   def __is_safe_path(self, path):
@@ -176,8 +179,6 @@ class HttpServer:
       print('Unknown HTTP request method: ', request_method)
       status = const.HTTP_STATUS_BAD_REQ
     
-#    self._serve_content(req_file, request_method, conn, status)
-
 
   def _wait_for_connections(self):
     """ Sit in loop and wait for connections. Handle the request once
@@ -188,12 +189,9 @@ class HttpServer:
 
       conn, addr = self.sock.accept()
       print('New connection from ', addr)
-
-      data = conn.recv(1024)
-#      data_str = bytes.decode(data)
+      data = conn.recv(const.CHUNK_SIZE)
 
       #TODO: try-catch here w/ 500 internal error if exception
-      #self._handle_request(data_str, conn)
       self._handle_request(data, conn)
 
 
@@ -226,3 +224,89 @@ signal.signal(signal.SIGINT, stop_server)
 
 s = HttpServer('', 8000)
 s.start_server()
+
+
+
+'''
+    #TODO: size isn't working (size of headers and other info is included. 
+    # Splitting on '\r\n\r\n' should work, but also isn't...
+    parts = data.split('\r\n\r\n'.encode())
+    while len(parts) < 3:
+      new_d = conn.recv(const.CHUNK_SIZE)
+      if not new_d: break
+      data += new_d
+      parts = data.split('\r\n\r\n'.encode())
+
+    if len(parts) < 3:
+      # malformed request. Raise error
+      pass
+    #    print(bytes.decode(parts[1]))
+    fields = bytes.decode(parts[0]).split('\n')
+    fields = [field.split(' ') for field in fields] 
+    sz = int(fields[3][1])
+    #TODO: grab actual file name and sanitize it. Add random string if name collision
+    filename = uuid.uuid4().hex
+    content = parts[2]
+    print(sz)
+    print('uploading file!')
+    with open(self.upload_dir + '/' + filename, 'wb') as fp:
+      if len(content) < sz:
+        fp.write(content)
+        sz -= len(content)
+      else:
+        fp.write(content[0:sz])
+        return
+      print(content)
+      while content:
+        print('SIZE: ', sz)
+        content = conn.recv(const.CHUNK_SIZE)
+        check = content.split('\r\n\r\n'.encode()) 
+        if len(check) > 1:
+          print('FOUND IT!')
+          fp.write(check[0])
+          print(check[0])
+          print('This shit is after:')
+          print(check[1])
+          break
+        if len(content) < sz:
+          print(content)
+          fp.write(content)
+          sz -= len(content)
+        else:
+          print(content[0:sz])
+          fp.write(content[0:sz])
+          break
+    sys.exit(0)
+'''
+'''
+    content = data
+
+    chunk = conn.recv(512)
+    content += chunk
+    conn.settimeout(2.0)
+    while chunk:
+      try:
+          chunk = conn.recv(512) 
+      except socket.timeout as e:
+          break
+      print(chunk)
+      content += chunk
+      print(len(chunk))
+      if len(chunk) < 1:
+          break
+    
+    conn.settimeout(None)
+    form = content.decode()
+
+    stuff = form.split('------')[1]
+    parsed = stuff.split('\n')
+    info = parsed[1]
+    file_data = '\n'.join(parsed[3:])
+    file_name = info.split('filename=\"')[1][:-2]
+    print(file_name)
+    print(file_data)
+
+    print('uploading file!')
+    with open(self.upload_dir + '/' + file_name, 'wb') as fp:
+        fp.write(file_data.encode())
+'''
