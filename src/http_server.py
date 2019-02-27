@@ -9,13 +9,29 @@ import argparse
 # sanitize upload file names
 from werkzeug.utils import secure_filename
 
-#Parses Arguments
+
 def check_args(args=None):
-  parser = argparse.ArgumentParser(description='Process flags for the program.')
-#  parser.add_argument('input', type=str, help="File name for file to search")
-#  parser.add_argument('kth_smallest', type=int, help="kth smallest element to find")
-#  parser.add_argument('num_elems', type=int, help="Number of elements to use from input file")
-  parser.add_argument('-v', '--verbose', action='store_true', help="more verbose printing")
+  """ Check for and parse the command line arguments given to the program.
+
+    Parameters
+    ----------
+    args : list of str
+        The command line arguments, if any, passed to the program as a list.
+
+    Returns 
+    -------
+    argparse.Namespace object
+        This class has all of the argument values (including defaults) in it.
+  """
+  parser = argparse.ArgumentParser(description='HTTP Server that uses sockets \
+      to receive and respond to requests. Serves content with proper headers, \
+      responds to requests for web pages, allows for user file uploads, and \
+      supports directory listing for the upload directory.')
+  parser.add_argument('-i', '--ip_addr', type=str, default='', help="Specify \
+      the IP address to bind the server to. Default is 0.0.0.0")
+  parser.add_argument('-p', '--port', type=int, default=0, help="Specify the \
+      port to bind the server to. Default is random avaialble port.")
+  parser.add_argument('-v', '--verbose', action='store_true', help="More verbose printing")
   results = parser.parse_args(args)
   return results
 
@@ -23,6 +39,7 @@ def check_args(args=None):
 class HttpServer:
   def __init__(self, ip_addr='', port=0, verbose=False):
     """ Constructor
+
     Parameters
     ----------
     ip_addr : str, optional
@@ -33,6 +50,7 @@ class HttpServer:
     verbose : bool, optional
         The server prints some info to the command line. Should this printing
         be verbose.
+
     Attributes
     ----------
     www_dir : str
@@ -45,7 +63,7 @@ class HttpServer:
     self.ip = ip_addr
     self.port = port
     self.www_dir = 'www'
-    self.upload_dir = 'upload'
+    self.upload_dir = 'www/upload'
     self.verbose = verbose
 
 
@@ -60,7 +78,10 @@ class HttpServer:
       self.sock.bind((self.ip, self.port))
       if self.port == 0:
         self.port = self.sock.getsockname()[1]
-      print('Starting HTTP server at {} on port {}'.format(self.ip, self.port))
+      ip = self.ip
+      if ip == '':
+        ip = '0.0.0.0'
+      print('Starting HTTP server at {} on port {}'.format(ip, self.port))
     except Exception as e:
       print('Failed to start HTTP server.')
       print(e)
@@ -120,6 +141,7 @@ class HttpServer:
     ----------
     filename : str
         The path of the file that the user is requesting. 
+
     Returns 
     -------
     bytes object
@@ -141,15 +163,23 @@ class HttpServer:
     Returns 
     -------
     bytes object
+    #with open(self.upload_dir + '/' + file_name, 'wb') as fp:
+    #with open(self.www_dir + '/' + self.upload_dir + '/' + file_name, 'wb') as fp:
         The HTML displaying the files in the directory encoded to be sent via
         the socket
     """
     content = ''
+    if path.startswith('/'):
+      path = path[1:]
+    if not path.endswith('/'): 
+      path += '/'
     for f in os.listdir(path):
-      if os.path.isdir(path + '/' + f):
+      link = '#'
+      if os.path.isdir(path + f):
         f += '/'
+        link = path + f
       #content += '<a href=' + path + '/' + f + '>' + f + '</a><br>'
-      content += '<a href=#>' + f + '</a><br>'
+      content += '<a href=' + link + '>' + f + '</a><br>'
       print(f)
   
     return content.encode()
@@ -184,11 +214,12 @@ class HttpServer:
     else:
       try: 
         headers = self._generate_headers(status)
-        if req_file.startswith(self.www_dir + '/' + self.upload_dir) and os.path.isdir(req_file):
+        if (self.upload_dir) in req_file and os.path.isdir(req_file):
           content = self._traverse_uploads(req_file)
         else:
           content = self._get_content(req_file)
-      except FileNotFoundError as e:
+      except IOError as e:
+#      except FileNotFoundError as e:
         headers = self._generate_headers(const.HTTP_STATUS_FILE_NOT_FOUND)
         content = self._get_content(self.www_dir + '/' + 'error_404.html')
         print(e)
@@ -279,6 +310,7 @@ class HttpServer:
     """
     basedir = os.getcwd() + '/' + self.www_dir + '/'
     basedir = self.www_dir + '/'
+    return True
     return os.path.commonprefix([path, basedir]) == basedir
 
 
@@ -307,13 +339,15 @@ class HttpServer:
     if request_method == 'GET' or request_method == 'HEAD':
       req_file = fields[0][1]
       if req_file == '/': req_file += 'index.html'
-      if req_file.startswith('/' + self.www_dir + '/' + self.upload_dir):
-        req_file = req_file[1:]
-      if not req_file.startswith(self.www_dir) and not req_file.startswith('/'+ self.www_dir): #TODO: new if statement. Keep or always do?
+      if not self.www_dir in req_file: 
         req_file = self.www_dir + req_file
+      if req_file.startswith('/'):
+        req_file = req_file[1:]
+      if req_file.startswith('upload/'):
+        req_file = req_file.split('upload/', 1)[1]
       print('Request for file: ', req_file)
       print('Checking for path traversal attempt. . .')
-      if self.__is_safe_path(req_file): # Safe to try to open file
+      if req_file == '/upload' or self.__is_safe_path(req_file): # Safe to try to open file
         print('This is a safe file!')
         status = const.HTTP_STATUS_OK
       else: # return 403 Forbidden error
@@ -324,6 +358,7 @@ class HttpServer:
     else:
       print('Unknown HTTP request method: ', request_method)
       status = const.HTTP_STATUS_BAD_REQ
+      self._serve_content(req_file, request_method, conn, status)
     
 
   def _wait_for_connections(self):
@@ -368,6 +403,7 @@ def stop_server(sig, frame):
 # Gracefully shutdown HTTP server upon ctrl-c
 signal.signal(signal.SIGINT, stop_server)
 
+
 args = check_args(sys.argv[1:])
-s = HttpServer('', 8000, args.verbose)
+s = HttpServer(args.ip_addr, args.port, args.verbose)
 s.start_server()
