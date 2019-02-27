@@ -5,18 +5,56 @@ import signal
 import time
 import const
 import uuid # create random file name
+import argparse
 # sanitize upload file names
 from werkzeug.utils import secure_filename
 
+#Parses Arguments
+def check_args(args=None):
+  parser = argparse.ArgumentParser(description='Process flags for the program.')
+#  parser.add_argument('input', type=str, help="File name for file to search")
+#  parser.add_argument('kth_smallest', type=int, help="kth smallest element to find")
+#  parser.add_argument('num_elems', type=int, help="Number of elements to use from input file")
+  parser.add_argument('-v', '--verbose', action='store_true', help="more verbose printing")
+  results = parser.parse_args(args)
+  return results
+
+
 class HttpServer:
-  def __init__(self, ip_addr='', port=0):
+  def __init__(self, ip_addr='', port=0, verbose=False):
+    """ Constructor
+    Parameters
+    ----------
+    ip_addr : str, optional
+        Ip address to bind the socket to. Default is empty str which binds to
+        0.0.0.0
+    port : int, optional
+        Port that the socket binds to. Default is a random, available port
+    verbose : bool, optional
+        The server prints some info to the command line. Should this printing
+        be verbose.
+    Attributes
+    ----------
+    www_dir : str
+        The directory, relative to the base directory where the HTML files are
+        stored.
+    upload_dir : str
+        The directory, relative to the base directory where the files uploaded
+        by the user are stored.
+    """
     self.ip = ip_addr
     self.port = port
     self.www_dir = 'www'
     self.upload_dir = 'upload'
+    self.verbose = verbose
 
 
   def start_server(self):
+    """ Open the socket, and bind it to the address and port set in the
+    constructor. If unable to connect on the specified port because address is
+    already in use, try again. This is useful for testing or immediate restart.
+    Once we bind the socket, call the loop that waits for connections.
+    """
     self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
       self.sock.bind((self.ip, self.port))
@@ -36,7 +74,19 @@ class HttpServer:
 
   def _generate_headers(self, status_code):
     """Generate appropriate header based on status code. Return the header
-    encoded as a bytes object so that it can be sent to the browser. """
+    encoded as a bytes object so that it can be sent to the browser. 
+
+    Parameters
+    ----------
+    status_code : int
+        The status code that will be set in the header
+
+    Returns 
+    -------
+    bytes object
+        The header with the necessary fields set appropriately and encoded to
+        be sent over the socket. 
+    """
     if status_code == const.HTTP_STATUS_OK:
       header = 'HTTP/1.1 {} OK\r\n'.format(const.HTTP_STATUS_OK)
     elif status_code == const.HTTP_STATUS_BAD_REQ:
@@ -64,13 +114,64 @@ class HttpServer:
 
   def _get_content(self, filename):
     """ Open up the webpage and return it. Note: opening file in binary mode,
-    so the content does not need to be encoded like the header """
+    so the content does not need to be encoded like the header.
+
+    Parameters
+    ----------
+    filename : str
+        The path of the file that the user is requesting. 
+    Returns 
+    -------
+    bytes object
+        The contents of the file (should be HTML) to be sent to the socket
+    """
     with open(filename, 'rb') as fp:
       content = fp.read()
     return content
 
 
+  def _traverse_uploads(self, path):
+    """ Traverses the directory and lists the files contained therein.
+
+    Parameters
+    ----------
+    path : str
+        Path of directory being requested by user that has files to list
+
+    Returns 
+    -------
+    bytes object
+        The HTML displaying the files in the directory encoded to be sent via
+        the socket
+    """
+    content = ''
+    for f in os.listdir(path):
+      if os.path.isdir(path + '/' + f):
+        f += '/'
+      #content += '<a href=' + path + '/' + f + '>' + f + '</a><br>'
+      content += '<a href=#>' + f + '</a><br>'
+      print(f)
+  
+    return content.encode()
+
+
+
   def _serve_content(self, req_file, req_method, conn, status=const.HTTP_STATUS_OK):
+    """ Fetch the header, open the necessary file, and return the headers and
+    file to the socket.
+
+    Parameters
+    ----------
+    req_file : str
+        The name of the file that is being requested
+    req_method : str
+        The request method, should be GET or POST
+    conn : socket.socket object
+        The handle to the socket over which the content will be served
+    status : int
+        The status code that will be put in the header. This may be changed in
+        this function.
+    """
     if status == const.HTTP_STATUS_BAD_REQ:
       headers = self._generate_headers(const.HTTP_STATUS_BAD_REQ)
       content = self._get_content(self.www_dir + '/' + 'error_400.html')
@@ -82,8 +183,11 @@ class HttpServer:
       content = self._get_content(self.www_dir + '/' + 'error_415.html')
     else:
       try: 
-        content = self._get_content(req_file)
         headers = self._generate_headers(status)
+        if req_file.startswith(self.www_dir + '/' + self.upload_dir) and os.path.isdir(req_file):
+          content = self._traverse_uploads(req_file)
+        else:
+          content = self._get_content(req_file)
       except FileNotFoundError as e:
         headers = self._generate_headers(const.HTTP_STATUS_FILE_NOT_FOUND)
         content = self._get_content(self.www_dir + '/' + 'error_404.html')
@@ -100,6 +204,20 @@ class HttpServer:
 
 
   def _upload_file(self, fields, data, conn):
+    """ Handle file uploads by a user via HTML form. This function will save
+    the file uploaded by the user to the upload directory.
+
+    Parameters
+    ----------
+    fields : list of lists of str
+        The lists in fields are the different HTML headers. Each str element in
+        each list is a space delimited value of that header.            
+    data : bytes object
+        The initial data received from the socket. Contains HTML headers
+    conn : socket.socket object
+        The handle to the socket that we're listening on. Will be used to
+        receive the rest of the data from the client.
+    """
     parts = data.split('\r\n\r\n'.encode())
     while len(parts) < 3:
       chunk = conn.recv(const.CHUNK_SIZE)
@@ -111,21 +229,20 @@ class HttpServer:
       self._serve_content('', '', conn, const.HTTP_STATUS_INTERNAL_ERROR)
       return
 
-    file_name = bytes.decode(parts[1]).split('filename=\"')[1].split('"')[0]
+    file_name = bytes.decode(parts[1].split(b'filename=\"')[1].split(b'"')[0])
     file_name = secure_filename(file_name) # sanitize filename
     if file_name == '': # handle if sanitize returns empty filename or file exists
-      file_name = uuid.uuid4().hex + '.txt'
-    if not file_name.endswith('.txt'):
-      print('Unsupported Media Type')
-      self._serve_content('', '', conn, const.HTTP_STATUS_UNSUPPORTED_MEDIA_TYPE)
-      return
+      file_name = uuid.uuid4().hex
     exists = os.path.isfile(self.upload_dir + '/' + file_name)
     if exists:
       name, ext = file_name.split('.')
       file_name = name + '_' + uuid.uuid4().hex + '.' + ext
 
-    print('File to upload: ', file_name)
+    if self.verbose:
+      print('File to upload: ', file_name)
     content = b'' 
+    # In listening for the form data (filename, etc. we may have already
+    # received some of the file data
     for part in parts[2:]:
       content += part
     conn.settimeout(2.0)
@@ -134,39 +251,68 @@ class HttpServer:
         chunk = conn.recv(const.CHUNK_SIZE)
       except socket.timeout:
         break
-      print(chunk)
+      if self.verbose:
+        print(chunk)
       if not chunk: break
       content += chunk
-
-    file_data = content.decode().split('\r\n------')[0]
-    #print(file_data)
+    # Don't write what is after the boundary as it is not part of the file
+    file_data = content.split(b'\r\n------')[0]
+    print(file_data)
     with open(self.upload_dir + '/' + file_name, 'wb') as fp:
-      fp.write(file_data.encode())
+      fp.write(file_data)
 
     self._serve_content(self.www_dir + '/upload_success.html', 'GET', conn)
 
 
   def __is_safe_path(self, path):
-    """ Check for attempt at path traversal! """
-    basedir = os.getcwd() + '/' + self.www_dir
-    follow_symlinks = False
-    if follow_symlinks:
-      return os.path.realpath(path).startswith(basedir)
-    return os.path.abspath(path).startswith(basedir)
+    """ Check for an attempt at path traversal.
+
+    Parameters
+    ----------
+    path : str
+        The path being requested by the client that needs to be validated.
+    
+    Returns 
+    -------
+    bool
+        Boolean of the check if the user is requesting file at the proper path
+    """
+    basedir = os.getcwd() + '/' + self.www_dir + '/'
+    basedir = self.www_dir + '/'
+    return os.path.commonprefix([path, basedir]) == basedir
 
 
   def _handle_request(self, data, conn):
+    """ Called each time a request is received on the socket. This function
+    checks the type of request -- GET or POST -- and does some some safety
+    checking for path traversal before handing the request and data off to
+    the function that will serve it.
+
+    Parameters
+    ----------
+    data : bytes object
+        The initial data received from the socket. Contains HTML headers
+    conn : socket.socket object
+        The handle to the socket that we're listening on. Will be used to
+        receive the rest of the data from the client.
+    """
     data_str = bytes.decode(data)
     fields = data_str.split('\n')
     fields = [field.split(' ') for field in fields] 
     request_method = fields[0][0]
-    print(request_method)
-    print(fields)
+    print('Request method: ', request_method)
+    if self.verbose:
+      print('Header fields:')
+      print(fields)
     if request_method == 'GET' or request_method == 'HEAD':
       req_file = fields[0][1]
       if req_file == '/': req_file += 'index.html'
-      req_file = self.www_dir + req_file
+      if req_file.startswith('/' + self.www_dir + '/' + self.upload_dir):
+        req_file = req_file[1:]
+      if not req_file.startswith(self.www_dir) and not req_file.startswith('/'+ self.www_dir): #TODO: new if statement. Keep or always do?
+        req_file = self.www_dir + req_file
       print('Request for file: ', req_file)
+      print('Checking for path traversal attempt. . .')
       if self.__is_safe_path(req_file): # Safe to try to open file
         print('This is a safe file!')
         status = const.HTTP_STATUS_OK
@@ -182,7 +328,8 @@ class HttpServer:
 
   def _wait_for_connections(self):
     """ Sit in loop and wait for connections. Handle the request once
-    a connection is received. """
+    a connection is received. 
+    """
     while True:
       print('Listening for new connection')
       self.sock.listen(const.MAX_CONNECTIONS)
@@ -191,7 +338,7 @@ class HttpServer:
       print('New connection from ', addr)
       data = conn.recv(const.CHUNK_SIZE)
 
-      #TODO: try-catch here w/ 500 internal error if exception
+      #TODO: try-catch here w/ 500 internal error if exception??
       self._handle_request(data, conn)
 
 
@@ -221,92 +368,6 @@ def stop_server(sig, frame):
 # Gracefully shutdown HTTP server upon ctrl-c
 signal.signal(signal.SIGINT, stop_server)
 
-
-s = HttpServer('', 8000)
+args = check_args(sys.argv[1:])
+s = HttpServer('', 8000, args.verbose)
 s.start_server()
-
-
-
-'''
-    #TODO: size isn't working (size of headers and other info is included. 
-    # Splitting on '\r\n\r\n' should work, but also isn't...
-    parts = data.split('\r\n\r\n'.encode())
-    while len(parts) < 3:
-      new_d = conn.recv(const.CHUNK_SIZE)
-      if not new_d: break
-      data += new_d
-      parts = data.split('\r\n\r\n'.encode())
-
-    if len(parts) < 3:
-      # malformed request. Raise error
-      pass
-    #    print(bytes.decode(parts[1]))
-    fields = bytes.decode(parts[0]).split('\n')
-    fields = [field.split(' ') for field in fields] 
-    sz = int(fields[3][1])
-    #TODO: grab actual file name and sanitize it. Add random string if name collision
-    filename = uuid.uuid4().hex
-    content = parts[2]
-    print(sz)
-    print('uploading file!')
-    with open(self.upload_dir + '/' + filename, 'wb') as fp:
-      if len(content) < sz:
-        fp.write(content)
-        sz -= len(content)
-      else:
-        fp.write(content[0:sz])
-        return
-      print(content)
-      while content:
-        print('SIZE: ', sz)
-        content = conn.recv(const.CHUNK_SIZE)
-        check = content.split('\r\n\r\n'.encode()) 
-        if len(check) > 1:
-          print('FOUND IT!')
-          fp.write(check[0])
-          print(check[0])
-          print('This shit is after:')
-          print(check[1])
-          break
-        if len(content) < sz:
-          print(content)
-          fp.write(content)
-          sz -= len(content)
-        else:
-          print(content[0:sz])
-          fp.write(content[0:sz])
-          break
-    sys.exit(0)
-'''
-'''
-    content = data
-
-    chunk = conn.recv(512)
-    content += chunk
-    conn.settimeout(2.0)
-    while chunk:
-      try:
-          chunk = conn.recv(512) 
-      except socket.timeout as e:
-          break
-      print(chunk)
-      content += chunk
-      print(len(chunk))
-      if len(chunk) < 1:
-          break
-    
-    conn.settimeout(None)
-    form = content.decode()
-
-    stuff = form.split('------')[1]
-    parsed = stuff.split('\n')
-    info = parsed[1]
-    file_data = '\n'.join(parsed[3:])
-    file_name = info.split('filename=\"')[1][:-2]
-    print(file_name)
-    print(file_data)
-
-    print('uploading file!')
-    with open(self.upload_dir + '/' + file_name, 'wb') as fp:
-        fp.write(file_data.encode())
-'''
