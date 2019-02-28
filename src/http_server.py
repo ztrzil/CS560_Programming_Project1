@@ -37,6 +37,29 @@ def check_args(args=None):
 
 
 class HttpServer:
+  """ Our HTTP Sever class. The class has all the required functionality for
+  starting the server, binding it to an address and port, monitoring for
+  connections, responding to requests, and serving content. It's design
+  includes the three required features in the project write-up: 
+    1. Respond to HTTP requests with query and header parsing
+    2. HTML page navigation 
+    3. Static file transport allowing users to submit a file to the server side
+
+  Directory listing is available for only the upload directory and subfolders
+  of the upload directory. This is a security measure to prevent arbitrary path
+  traversal.
+
+    Attributes
+    ----------
+    www_dir : str
+        The directory, relative to the base directory where the HTML files are
+        stored.
+    upload_dir : str
+        The directory, relative to the base directory where the files uploaded
+        by the user are stored.
+  """
+
+
   def __init__(self, ip_addr='', port=0, verbose=False):
     """ Constructor
 
@@ -50,15 +73,6 @@ class HttpServer:
     verbose : bool, optional
         The server prints some info to the command line. Should this printing
         be verbose.
-
-    Attributes
-    ----------
-    www_dir : str
-        The directory, relative to the base directory where the HTML files are
-        stored.
-    upload_dir : str
-        The directory, relative to the base directory where the files uploaded
-        by the user are stored.
     """
     self.ip = ip_addr
     self.port = port
@@ -178,7 +192,6 @@ class HttpServer:
       if os.path.isdir(path + f):
         f += '/'
         link = path + f
-      #content += '<a href=' + path + '/' + f + '>' + f + '</a><br>'
       content += '<a href=' + link + '>' + f + '</a><br>'
       print(f)
   
@@ -219,6 +232,7 @@ class HttpServer:
         else:
           content = self._get_content(req_file)
       except IOError as e:
+        # the below is a more specific excpetion available in python 3
 #      except FileNotFoundError as e:
         headers = self._generate_headers(const.HTTP_STATUS_FILE_NOT_FOUND)
         content = self._get_content(self.www_dir + '/' + 'error_404.html')
@@ -230,7 +244,7 @@ class HttpServer:
 
     response = headers + content
     conn.send(response)
-    print('Terminating connection with client')
+    print('Finished sending content to client')
     conn.close()
 
 
@@ -272,7 +286,7 @@ class HttpServer:
     if self.verbose:
       print('File to upload: ', file_name)
     content = b'' 
-    # In listening for the form data (filename, etc. we may have already
+    # In listening for the form data (filename, etc.) we may have already
     # received some of the file data
     for part in parts[2:]:
       content += part
@@ -310,8 +324,8 @@ class HttpServer:
     """
     basedir = os.getcwd() + '/' + self.www_dir + '/'
     basedir = self.www_dir + '/'
-    return True
-    return os.path.commonprefix([path, basedir]) == basedir
+    return ((os.path.commonprefix([path, basedir]) == basedir) or
+      (os.path.commonprefix([path, self.upload_dir + '/']) == self.upload_dir + '/'))
 
 
   def _handle_request(self, data, conn):
@@ -373,8 +387,10 @@ class HttpServer:
       print('New connection from ', addr)
       data = conn.recv(const.CHUNK_SIZE)
 
-      #TODO: try-catch here w/ 500 internal error if exception??
-      self._handle_request(data, conn)
+      try:
+        self._handle_request(data, conn)
+      except:
+        self._server_content('', '', conn, const.HTTP_STATUS_INTERNAL_SERVER_ERROR)
 
 
 
@@ -400,10 +416,12 @@ def stop_server(sig, frame):
   sys.exit(0)
 
 
-# Gracefully shutdown HTTP server upon ctrl-c
-signal.signal(signal.SIGINT, stop_server)
+
+if __name__ == "__main__":
+  # Gracefully shutdown HTTP server upon ctrl-c
+  signal.signal(signal.SIGINT, stop_server)
 
 
-args = check_args(sys.argv[1:])
-s = HttpServer(args.ip_addr, args.port, args.verbose)
-s.start_server()
+  args = check_args(sys.argv[1:])
+  s = HttpServer(args.ip_addr, args.port, args.verbose)
+  s.start_server()

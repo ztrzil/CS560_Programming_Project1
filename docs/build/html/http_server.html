@@ -1,0 +1,287 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>http_server module &#8212; Programming_Assignment_1_CS560 0.0.1 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script type="text/javascript" id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="module-http_server">
+<span id="http-server-module"></span><h1>http_server module<a class="headerlink" href="#module-http_server" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="http_server.HttpServer">
+<em class="property">class </em><code class="descclassname">http_server.</code><code class="descname">HttpServer</code><span class="sig-paren">(</span><em>ip_addr=''</em>, <em>port=0</em>, <em>verbose=False</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Our HTTP Sever class. The class has all the required functionality for
+starting the server, binding it to an address and port, monitoring for
+connections, responding to requests, and serving content. It’s design
+includes the three required features in the project write-up:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li>Respond to HTTP requests with query and header parsing</li>
+<li>HTML page navigation</li>
+<li>Static file transport allowing users to submit a file to the server side</li>
+</ol>
+</div></blockquote>
+<p>Directory listing is available for only the upload directory and subfolders
+of the upload directory. This is a security measure to prevent arbitrary path
+traversal.</p>
+<blockquote>
+<div><dl class="docutils">
+<dt>www_dir <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The directory, relative to the base directory where the HTML files are
+stored.</dd>
+<dt>upload_dir <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The directory, relative to the base directory where the files uploaded
+by the user are stored.</dd>
+</dl>
+</div></blockquote>
+<dl class="method">
+<dt id="http_server.HttpServer._HttpServer__is_safe_path">
+<code class="descname">_HttpServer__is_safe_path</code><span class="sig-paren">(</span><em>path</em><span class="sig-paren">)</span><a class="headerlink" href="#http_server.HttpServer._HttpServer__is_safe_path" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check for an attempt at path traversal.</p>
+<dl class="docutils">
+<dt>path <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The path being requested by the client that needs to be validated.</dd>
+</dl>
+<dl class="docutils">
+<dt>bool</dt>
+<dd>Boolean of the check if the user is requesting file at the proper path</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._generate_headers">
+<code class="descname">_generate_headers</code><span class="sig-paren">(</span><em>status_code</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._generate_headers"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._generate_headers" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate appropriate header based on status code. Return the header
+encoded as a bytes object so that it can be sent to the browser.</p>
+<dl class="docutils">
+<dt>status_code <span class="classifier-delimiter">:</span> <span class="classifier">int</span></dt>
+<dd>The status code that will be set in the header</dd>
+</dl>
+<dl class="docutils">
+<dt>bytes object</dt>
+<dd>The header with the necessary fields set appropriately and encoded to
+be sent over the socket.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._get_content">
+<code class="descname">_get_content</code><span class="sig-paren">(</span><em>filename</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._get_content"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._get_content" title="Permalink to this definition">¶</a></dt>
+<dd><p>Open up the webpage and return it. Note: opening file in binary mode,
+so the content does not need to be encoded like the header.</p>
+<dl class="docutils">
+<dt>filename <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The path of the file that the user is requesting.</dd>
+</dl>
+<dl class="docutils">
+<dt>bytes object</dt>
+<dd>The contents of the file (should be HTML) to be sent to the socket</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._handle_request">
+<code class="descname">_handle_request</code><span class="sig-paren">(</span><em>data</em>, <em>conn</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._handle_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._handle_request" title="Permalink to this definition">¶</a></dt>
+<dd><p>Called each time a request is received on the socket. This function
+checks the type of request – GET or POST – and does some some safety
+checking for path traversal before handing the request and data off to
+the function that will serve it.</p>
+<dl class="docutils">
+<dt>data <span class="classifier-delimiter">:</span> <span class="classifier">bytes object</span></dt>
+<dd>The initial data received from the socket. Contains HTML headers</dd>
+<dt>conn <span class="classifier-delimiter">:</span> <span class="classifier">socket.socket object</span></dt>
+<dd>The handle to the socket that we’re listening on. Will be used to
+receive the rest of the data from the client.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._serve_content">
+<code class="descname">_serve_content</code><span class="sig-paren">(</span><em>req_file</em>, <em>req_method</em>, <em>conn</em>, <em>status=200</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._serve_content"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._serve_content" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fetch the header, open the necessary file, and return the headers and
+file to the socket.</p>
+<dl class="docutils">
+<dt>req_file <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The name of the file that is being requested</dd>
+<dt>req_method <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>The request method, should be GET or POST</dd>
+<dt>conn <span class="classifier-delimiter">:</span> <span class="classifier">socket.socket object</span></dt>
+<dd>The handle to the socket over which the content will be served</dd>
+<dt>status <span class="classifier-delimiter">:</span> <span class="classifier">int</span></dt>
+<dd>The status code that will be put in the header. This may be changed in
+this function.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._traverse_uploads">
+<code class="descname">_traverse_uploads</code><span class="sig-paren">(</span><em>path</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._traverse_uploads"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._traverse_uploads" title="Permalink to this definition">¶</a></dt>
+<dd><p>Traverses the directory and lists the files contained therein.</p>
+<dl class="docutils">
+<dt>path <span class="classifier-delimiter">:</span> <span class="classifier">str</span></dt>
+<dd>Path of directory being requested by user that has files to list</dd>
+</dl>
+<p>bytes object
+#with open(self.upload_dir + ‘/’ + file_name, ‘wb’) as fp:
+#with open(self.www_dir + ‘/’ + self.upload_dir + ‘/’ + file_name, ‘wb’) as fp:</p>
+<blockquote>
+<div>The HTML displaying the files in the directory encoded to be sent via
+the socket</div></blockquote>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._upload_file">
+<code class="descname">_upload_file</code><span class="sig-paren">(</span><em>fields</em>, <em>data</em>, <em>conn</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._upload_file"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._upload_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Handle file uploads by a user via HTML form. This function will save
+the file uploaded by the user to the upload directory.</p>
+<dl class="docutils">
+<dt>fields <span class="classifier-delimiter">:</span> <span class="classifier">list of lists of str</span></dt>
+<dd>The lists in fields are the different HTML headers. Each str element in
+each list is a space delimited value of that header.</dd>
+<dt>data <span class="classifier-delimiter">:</span> <span class="classifier">bytes object</span></dt>
+<dd>The initial data received from the socket. Contains HTML headers</dd>
+<dt>conn <span class="classifier-delimiter">:</span> <span class="classifier">socket.socket object</span></dt>
+<dd>The handle to the socket that we’re listening on. Will be used to
+receive the rest of the data from the client.</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer._wait_for_connections">
+<code class="descname">_wait_for_connections</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer._wait_for_connections"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer._wait_for_connections" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sit in loop and wait for connections. Handle the request once
+a connection is received.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer.shutdown">
+<code class="descname">shutdown</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer.shutdown"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer.shutdown" title="Permalink to this definition">¶</a></dt>
+<dd><p>Shutdown any active connections and close the socket</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="http_server.HttpServer.start_server">
+<code class="descname">start_server</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#HttpServer.start_server"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.HttpServer.start_server" title="Permalink to this definition">¶</a></dt>
+<dd><p>Open the socket, and bind it to the address and port set in the
+constructor. If unable to connect on the specified port because address is
+already in use, try again. This is useful for testing or immediate restart.
+Once we bind the socket, call the loop that waits for connections.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="http_server.check_args">
+<code class="descclassname">http_server.</code><code class="descname">check_args</code><span class="sig-paren">(</span><em>args=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#check_args"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.check_args" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check for and parse the command line arguments given to the program.</p>
+<dl class="docutils">
+<dt>args <span class="classifier-delimiter">:</span> <span class="classifier">list of str</span></dt>
+<dd>The command line arguments, if any, passed to the program as a list.</dd>
+</dl>
+<dl class="docutils">
+<dt>argparse.Namespace object</dt>
+<dd>This class has all of the argument values (including defaults) in it.</dd>
+</dl>
+</dd></dl>
+
+<dl class="function">
+<dt id="http_server.stop_server">
+<code class="descclassname">http_server.</code><code class="descname">stop_server</code><span class="sig-paren">(</span><em>sig</em>, <em>frame</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/http_server.html#stop_server"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#http_server.stop_server" title="Permalink to this definition">¶</a></dt>
+<dd><p>If ctrl-c is caught, shut down the server gracefully and exit.</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">Programming_Assignment_1_CS560</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    </div>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Zachary Trzil, Tyler McDaniel.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.8.2</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/http_server.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
