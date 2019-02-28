@@ -266,6 +266,7 @@
         <span class="k">else</span><span class="p">:</span>
           <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_content</span><span class="p">(</span><span class="n">req_file</span><span class="p">)</span>
       <span class="k">except</span> <span class="ne">IOError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="c1"># the below is a more specific excpetion available in python 3</span>
 <span class="c1">#      except FileNotFoundError as e:</span>
         <span class="n">headers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_headers</span><span class="p">(</span><span class="n">const</span><span class="o">.</span><span class="n">HTTP_STATUS_FILE_NOT_FOUND</span><span class="p">)</span>
         <span class="n">content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_content</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">www_dir</span> <span class="o">+</span> <span class="s1">&#39;/&#39;</span> <span class="o">+</span> <span class="s1">&#39;error_404.html&#39;</span><span class="p">)</span>
@@ -277,7 +278,7 @@
 
     <span class="n">response</span> <span class="o">=</span> <span class="n">headers</span> <span class="o">+</span> <span class="n">content</span>
     <span class="n">conn</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">response</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Terminating connection with client&#39;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Finished sending content to client&#39;</span><span class="p">)</span>
     <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span></div>
 
 
@@ -319,7 +320,7 @@
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;File to upload: &#39;</span><span class="p">,</span> <span class="n">file_name</span><span class="p">)</span>
     <span class="n">content</span> <span class="o">=</span> <span class="sa">b</span><span class="s1">&#39;&#39;</span> 
-    <span class="c1"># In listening for the form data (filename, etc. we may have already</span>
+    <span class="c1"># In listening for the form data (filename, etc.) we may have already</span>
     <span class="c1"># received some of the file data</span>
     <span class="k">for</span> <span class="n">part</span> <span class="ow">in</span> <span class="n">parts</span><span class="p">[</span><span class="mi">2</span><span class="p">:]:</span>
       <span class="n">content</span> <span class="o">+=</span> <span class="n">part</span>
@@ -379,8 +380,8 @@
     <span class="n">fields</span> <span class="o">=</span> <span class="n">data_str</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;</span><span class="se">\n</span><span class="s1">&#39;</span><span class="p">)</span>
     <span class="n">fields</span> <span class="o">=</span> <span class="p">[</span><span class="n">field</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="p">)</span> <span class="k">for</span> <span class="n">field</span> <span class="ow">in</span> <span class="n">fields</span><span class="p">]</span> 
     <span class="n">request_method</span> <span class="o">=</span> <span class="n">fields</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Request method: &#39;</span><span class="p">,</span> <span class="n">request_method</span><span class="p">)</span>
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">verbose</span><span class="p">:</span>
+      <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Request method: &#39;</span><span class="p">,</span> <span class="n">request_method</span><span class="p">)</span>
       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Header fields:&#39;</span><span class="p">)</span>
       <span class="nb">print</span><span class="p">(</span><span class="n">fields</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">request_method</span> <span class="o">==</span> <span class="s1">&#39;GET&#39;</span> <span class="ow">or</span> <span class="n">request_method</span> <span class="o">==</span> <span class="s1">&#39;HEAD&#39;</span><span class="p">:</span>
@@ -420,8 +421,10 @@
       <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;New connection from &#39;</span><span class="p">,</span> <span class="n">addr</span><span class="p">)</span>
       <span class="n">data</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="n">const</span><span class="o">.</span><span class="n">CHUNK_SIZE</span><span class="p">)</span>
 
-      <span class="c1">#TODO: try-catch here w/ 500 internal error if exception??</span>
-      <span class="bp">self</span><span class="o">.</span><span class="n">_handle_request</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">conn</span><span class="p">)</span></div>
+      <span class="k">try</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_handle_request</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">conn</span><span class="p">)</span>
+      <span class="k">except</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_server_content</span><span class="p">(</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">conn</span><span class="p">,</span> <span class="n">const</span><span class="o">.</span><span class="n">HTTP_STATUS_INTERNAL_SERVER_ERROR</span><span class="p">)</span></div>
 
 
 

@@ -302,7 +302,6 @@ class HttpServer:
       content += chunk
     # Don't write what is after the boundary as it is not part of the file
     file_data = content.split(b'\r\n------')[0]
-    print(file_data)
     with open(self.upload_dir + '/' + file_name, 'wb') as fp:
       fp.write(file_data)
 
@@ -346,8 +345,8 @@ class HttpServer:
     fields = data_str.split('\n')
     fields = [field.split(' ') for field in fields] 
     request_method = fields[0][0]
-    print('Request method: ', request_method)
     if self.verbose:
+      print('Request method: ', request_method)
       print('Header fields:')
       print(fields)
     if request_method == 'GET' or request_method == 'HEAD':
